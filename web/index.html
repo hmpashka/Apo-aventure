@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Apo aventure</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Apo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F1F2F6">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/app.css">
+<script>try{if(localStorage.getItem("apo-theme")==="dark")document.documentElement.dataset.theme="dark";var ts=localStorage.getItem("apo-text");if(ts)document.documentElement.style.setProperty("--text-size",ts)}catch(e){}</script>
+</head>
+<body>
+<div id="root"></div>
+<div class="scrim" id="scrim" data-act="close"></div>
+<aside class="drawer" id="drawer" aria-modal="true" role="dialog"><div class="drawer-h"><h2 id="dTitle"></h2><button class="x" data-act="close" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="drawer-b" id="dBody"></div></aside>
+<button class="btn focus-exit" data-act="focus">Quitter le mode focus</button>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
