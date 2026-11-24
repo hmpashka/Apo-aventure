@@ -2,22 +2,34 @@
 
 Atelier d'écriture de roman à choix : personnages, relations, chronologie, graphe des choix avec jauges et conditions, éditeur de scène, mode lecture, boîte à idées, export Word pour KDP.
 
-Un seul programme tourne sur le Mac. Il sert l'application dans le navigateur (Mac et iPhone sur le même Wi-Fi) et range tout dans `~/Documents/Apo aventure`.
+Tout reste dans le dossier partagé : le programme et les données. N'importe quel Mac qui a accès au dossier peut lancer l'appli et retrouve le même roman, **un seul Mac à la fois** (un verrou l'empêche).
 
-## Installer sur le Mac
+```
+apo/
+  apo-aventure/                   ce dépôt (le programme)
+    Lancer Apo aventure.command   double-clic pour lancer
+    dist/                         programmes compilés (Mac Apple et Intel)
+  Données Apo aventure/           ton roman, créé au premier lancement
+```
 
-Double-clic sur **Installer Apo aventure.command**. Le programme est copié dans `~/Applications/Apo aventure`, il est lancé une première fois et le navigateur s'ouvre sur `http://localhost:4321`. Il ne démarre **jamais** tout seul à l'ouverture de session : pour le lancer, double-clic sur **Démarrer Apo aventure** dans `~/Applications/Apo aventure`.
+## Lancer
 
-Au premier lancement, choisis un code d'accès. Sur l'iPhone, scanne le QR code de l'accueil (ou de Réglages), puis dans Safari : Partager, « Sur l'écran d'accueil ».
+Double-clic sur **Lancer Apo aventure.command**. Une fenêtre Terminal s'ouvre (laisse-la ouverte), puis le navigateur sur `http://localhost:4321`. Rien n'est installé sur le Mac et rien ne démarre tout seul.
 
-Arrêter : bouton « Arrêter l'appli » (barre latérale ou Réglages). Tout est enregistré avant l'arrêt. Relancer : double-clic sur « Démarrer Apo aventure » dans `~/Applications/Apo aventure`.
+Au premier lancement, choisis un code d'accès. Sur l'iPhone (même Wi-Fi), scanne le QR code de l'accueil ou de Réglages, puis dans Safari : Partager, « Sur l'écran d'accueil ».
 
-Désinstaller : `~/Applications/Apo\ aventure/apo uninstall` (les données restent).
+## Arrêter
+
+Bouton **Arrêter l'appli** (barre latérale ou Réglages) : tout est enregistré, puis l'appli s'arrête et libère le verrou. Fermer la fenêtre Terminal arrête aussi l'appli.
+
+## Changer de Mac
+
+Arrête l'appli sur le premier Mac, attends que le dossier partagé se synchronise, puis lance-la sur l'autre. Si elle est encore ouverte ailleurs, le lanceur le dit et ne démarre pas. Un verrou de plus de 2 minutes sans signe de vie (Mac éteint brutalement) est ignoré.
 
 ## Où sont les données
 
 ```
-Documents/Apo aventure/
+Données Apo aventure/
   Ma saga/                 un dossier par saga (saga.json)
     Tome 1/                un sous-dossier par roman (projet.json)
       personnages/*.json
@@ -30,7 +42,7 @@ Documents/Apo aventure/
       .corbeille/          éléments supprimés
 ```
 
-Tout reste lisible sans l'outil, compatible Time Machine et Git.
+Tout reste lisible sans l'outil.
 
 ## Sécurité et sauvegarde
 
@@ -40,4 +52,4 @@ Tout reste lisible sans l'outil, compatible Time Machine et Git.
 
 ## Développer
 
-Go 1.22+. `go run . -data /tmp/apo-test` lance un serveur de test ; `./build.sh` produit les binaires Mac dans `dist/`.
+Go 1.22+. `go run . -data /tmp/apo-test` lance un serveur de test ; `./build.sh` produit les programmes Mac dans `dist/`.

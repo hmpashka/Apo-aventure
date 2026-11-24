@@ -66,6 +66,7 @@ func main() {
 	}
 
 	must(os.MkdirAll(filepath.Join(dataRoot, ".apo"), 0o755))
+	takeLock()
 	loadConfig()
 
 	mux := http.NewServeMux()

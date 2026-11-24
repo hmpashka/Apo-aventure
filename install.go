@@ -102,6 +102,7 @@ func hShutdown(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Arrêt demandé depuis l'application : données enregistrées, arrêt.")
 	go func() {
 		time.Sleep(400 * time.Millisecond)
+		releaseLock()
 		os.Exit(0)
 	}()
 }

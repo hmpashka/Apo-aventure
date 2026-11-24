@@ -92,7 +92,7 @@ const CONFLICTS={};
 
 /* ================= DÉMARRAGE ================= */
 async function boot(){
-  let s;try{s=await api("GET","/api/state")}catch(e){$("#root").innerHTML=`<div class="gate"><div class="panel"><h1>Le Mac ne répond pas</h1><p class="muted">Vérifie que l'appli est lancée sur le Mac (double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure), que le Mac est ouvert et sur le même Wi-Fi.</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div></div>`;return}
+  let s;try{s=await api("GET","/api/state")}catch(e){$("#root").innerHTML=`<div class="gate"><div class="panel"><h1>Le Mac ne répond pas</h1><p class="muted">Vérifie que l'appli est lancée sur le Mac (double-clic sur « Lancer Apo aventure » dans le dossier partagé apo / apo-aventure), que le Mac est ouvert et sur le même Wi-Fi.</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div></div>`;return}
   if(s.needSetup)return showSetup();
   if(!s.logged)return showGate();
   const last=ls.get("apo-last",null);
@@ -118,7 +118,7 @@ async function showProjects(){
     <h1>Mes romans</h1>
     ${tree.length?tree.map(n=>n.type==="saga"?`<div class="panel saga"><div class="saga-h"><span class="chip ink">saga</span><b>${esc(n.titre)}</b><button class="btn sm" data-act="newProj" data-parent="${esc(n.path)}">+ Tome</button></div>${(n.children||[]).filter(c=>c.type==="roman").map(card).join("")||'<p class="note" style="margin:0">Aucun tome pour l\'instant.</p>'}</div>`:card(n)).join(""):`<div class="panel empty">Aucun roman pour l'instant. Crée ton premier roman ou une saga, ou ouvre l'exemple pour explorer l'outil.</div>`}
     <div class="chips"><button class="btn primary" data-act="newProj">+ Roman</button><button class="btn" data-act="newSaga">+ Saga</button><button class="btn ghost" data-act="seedDemo">Créer le roman d'exemple</button></div>
-    <p class="note">Sur le Mac, chaque saga est un dossier et chaque tome un sous-dossier, dans « Documents / Apo aventure ».</p>
+    <p class="note">Sur le Mac, chaque saga est un dossier et chaque tome un sous-dossier, dans « Données Apo aventure », à côté du programme dans le dossier partagé.</p>
   </div>`;
 }
 function fmtDate(ms){if(!ms)return"";const d=new Date(ms),now=new Date();const diff=(now-d)/1000;if(diff<60)return"à l'instant";if(diff<3600)return`il y a ${Math.round(diff/60)} min`;if(d.toDateString()===now.toDateString())return"aujourd'hui à "+d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});return"le "+d.toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}
@@ -323,7 +323,7 @@ R_.accueil=()=>{
     </div></div>`;
 };
 function accessPanel(){return `<div class="panel"><div class="panel-h"><h2>Ouvrir sur l'iPhone</h2></div><div class="panel-b access"><img class="qr" src="/api/qr.png" alt="QR code de l'adresse de l'atelier" width="96" height="96"><div style="min-width:0"><p style="margin:0 0 6px;font-size:14px">Scanne avec l'appareil photo, puis dans Safari : Partager, « Sur l'écran d'accueil ».</p><code id="appUrl">…</code><p class="note" id="appIps" style="margin:6px 0 0"></p></div></div></div>`}
-function fillAccess(){api("GET","/api/info").then(i=>{const u=$("#appUrl");if(u)u.textContent=i.url;const p=$("#appIps");if(p)p.textContent=i.ips.length?"Si l'adresse ne marche pas : "+i.ips[0]:""}).catch(()=>{})}
+function fillAccess(){api("GET","/api/info").then(i=>{const u=$("#appUrl");if(u)u.textContent=i.url;document.querySelectorAll(".dataPath").forEach(e=>e.textContent=i.data);const p=$("#appIps");if(p)p.textContent=i.ips.length?"Si l'adresse ne marche pas : "+i.ips[0]:""}).catch(()=>{})}
 after.accueil=fillAccess;
 
 /* --- personnages --- */
@@ -706,11 +706,11 @@ R_.reglages=()=>`<div class="grid" style="max-width:720px">
     <div class="field"><label for="pR">Résumé</label><textarea id="pR">${esc(DB.projet.resume||"")}</textarea></div>
     <div class="field"><label for="pC">Nombre de chapitres</label><input id="pC" type="number" min="1" max="200" value="${nChap()}"></div>
     <button class="btn primary" style="justify-self:start" data-act="saveProj">Enregistrer</button>
-    <p class="note" style="margin:0">Dossier sur le Mac : Documents / Apo aventure / ${esc(PATH)}</p></div></div>
+    <p class="note" style="margin:0">Dossier des données : <span class="dataPath">…</span> / ${esc(PATH)}</p></div></div>
   ${accessPanel()}
   <div class="panel"><div class="panel-h"><h2>Affichage</h2></div><div class="panel-b grid" style="gap:10px"><div class="seg" style="max-width:260px"><button data-theme-set="light" aria-pressed="${!document.documentElement.dataset.theme}">Clair</button><button data-theme-set="dark" aria-pressed="${document.documentElement.dataset.theme==="dark"}">Sombre</button></div><div class="seg" style="max-width:260px"><button data-act="txt-">Texte plus petit</button><button data-act="txt+">Texte plus grand</button></div></div></div>
   <div class="panel"><div class="panel-h"><h2>Code d'accès</h2></div><div class="panel-b grid" style="gap:10px"><div class="rowform"><input id="nc" type="password" placeholder="Nouveau code" autocomplete="new-password"><button class="btn sm" data-act="changeCode">Changer le code</button></div><p class="note" style="margin:0">Les autres appareils devront retaper le nouveau code.</p><button class="btn sm ghost" style="justify-self:start" data-act="logout">Se déconnecter sur cet appareil</button></div></div>
-  <div class="panel"><div class="panel-h"><h2>Arrêter Apo aventure</h2></div><div class="panel-b grid" style="gap:10px"><p class="note" style="margin:0">Enregistre tout ce qui est en cours puis arrête l'appli sur le Mac. Pour la relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure. Elle ne démarre jamais toute seule.</p>${stopBox()}</div></div>
+  <div class="panel"><div class="panel-h"><h2>Arrêter Apo aventure</h2></div><div class="panel-b grid" style="gap:10px"><p class="note" style="margin:0">Enregistre tout ce qui est en cours puis arrête l'appli sur le Mac. Pour la relancer : double-clic sur « Lancer Apo aventure » dans le dossier apo / apo-aventure. Elle ne démarre jamais toute seule.</p>${stopBox()}</div></div>
   <div class="panel"><div class="panel-h"><h2>Autres romans</h2></div><div class="panel-b"><button class="btn" data-act="projects">Changer de roman ou de saga</button></div></div>
 </div>`;
 after.reglages=fillAccess;
@@ -726,7 +726,7 @@ async function stopApp(){
   try{await api("POST","/api/shutdown")}catch(e){if(e.status===401)return}
   ls.del(qKey());
   document.body.classList.remove("focus");closeDrawer();
-  $("#root").innerHTML=`<div class="gate"><div class="panel"><div class="brand"><div class="brand-mark">A</div><b>Apo aventure</b></div><h1>Apo aventure est arrêté</h1><p style="margin:0">Tout est enregistré dans le dossier « Documents / Apo aventure » du Mac.</p><p class="muted" style="margin:0">Pour relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure, puis recharge cette page.</p><button class="btn" onclick="location.reload()">Recharger</button></div></div>`;
+  $("#root").innerHTML=`<div class="gate"><div class="panel"><div class="brand"><div class="brand-mark">A</div><b>Apo aventure</b></div><h1>Apo aventure est arrêté</h1><p style="margin:0">Tout est enregistré dans « Données Apo aventure », dans le dossier partagé. Tu peux maintenant l'ouvrir depuis un autre Mac.</p><p class="muted" style="margin:0">Pour relancer : double-clic sur « Lancer Apo aventure » dans le dossier apo / apo-aventure, puis recharge cette page.</p><button class="btn" onclick="location.reload()">Recharger</button></div></div>`;
 }
 
 /* ================= TIROIR, TOAST ================= */
