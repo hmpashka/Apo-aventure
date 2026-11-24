@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -227,6 +228,12 @@ func hLogout(w http.ResponseWriter, r *http.Request) {
 // ---------- adresse réseau ----------
 
 func localName() string {
+	// Sur macOS, le vrai nom Bonjour est le LocalHostName (le nom d'hôte peut venir de la box).
+	if out, err := exec.Command("scutil", "--get", "LocalHostName").Output(); err == nil {
+		if n := strings.TrimSpace(string(out)); n != "" {
+			return n + ".local"
+		}
+	}
 	h, _ := os.Hostname()
 	h = strings.TrimSuffix(h, ".local")
 	h = strings.TrimSuffix(h, ".home")
