@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 const label = "fr.apo.aventure"
@@ -45,6 +48,7 @@ func install() {
 		fmt.Println("Erreur launchctl :", err, string(out))
 		os.Exit(1)
 	}
+	writeStartScript(filepath.Dir(exe), plistPath)
 	fmt.Printf("Apo aventure est installé et démarre avec la session.\nOuvre %s (ou http://localhost:%d sur ce Mac).\nDonnées : %s\n", appURL(), port, dataRoot)
 }
 
@@ -54,4 +58,43 @@ func uninstall() {
 	exec.Command("launchctl", "unload", plistPath).Run()
 	os.Remove(plistPath)
 	fmt.Println("Démarrage automatique retiré. Tes données sont intactes :", dataRoot)
+}
+
+// writeStartScript dépose « Démarrer Apo aventure.command » à côté du programme,
+// pour relancer l'appli d'un double-clic après un arrêt.
+func writeStartScript(dir, plistPath string) {
+	script := fmt.Sprintf(`#!/bin/sh
+# Double-clic : relance Apo aventure après un arrêt.
+launchctl load -w "%s" 2>/dev/null || true
+sleep 1
+open "http://localhost:%d"
+`, plistPath, port)
+	p := filepath.Join(dir, "Démarrer Apo aventure.command")
+	os.WriteFile(p, []byte(script), 0o755)
+}
+
+// hShutdown attend la fin des écritures en cours, répond, puis arrête le serveur.
+// Lancé par launchd, il se retire de launchd jusqu'à la prochaine ouverture de
+// session (ou un double-clic sur « Démarrer Apo aventure »), sinon launchd le relancerait.
+func hShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonErr(w, 405, "méthode")
+		return
+	}
+	mu.Lock() // plus aucune écriture ne peut commencer
+	writeJSON(w, map[string]any{"ok": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	log.Printf("Arrêt demandé depuis l'application : données enregistrées, arrêt.")
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		home, _ := os.UserHomeDir()
+		plistPath := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
+		if runtime.GOOS == "darwin" && os.Getenv("XPC_SERVICE_NAME") == label && exists(plistPath) {
+			// sans -w : le démarrage automatique reste actif pour la prochaine session
+			exec.Command("launchctl", "unload", plistPath).Run()
+		}
+		os.Exit(0)
+	}()
 }

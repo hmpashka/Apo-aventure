@@ -13,3 +13,4 @@ sleep 1
 open "http://localhost:4321"
 echo
 echo "C'est installé. Tu peux fermer cette fenêtre."
+echo "Après un arrêt depuis l'appli, relance-la avec « Démarrer Apo aventure » dans Applications / Apo aventure."

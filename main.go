@@ -80,6 +80,7 @@ func main() {
 	mux.HandleFunc("/api/obj", auth(hObj))
 	mux.HandleFunc("/api/history", auth(hHistory))
 	mux.HandleFunc("/api/export", auth(hExport))
+	mux.HandleFunc("/api/shutdown", auth(hShutdown))
 	sub, _ := fs.Sub(webFS, "web")
 	static := http.FileServer(http.FS(sub))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

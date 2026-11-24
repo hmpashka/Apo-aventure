@@ -188,6 +188,7 @@ function shell(){
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       <button class="btn sm ghost" data-go="reglages" style="justify-content:flex-start"><svg viewBox="0 0 24 24">${ICON.reglages}</svg>Réglages et accès iPhone</button>
+      <button class="btn sm ghost danger" data-go="reglages" data-stop="1" style="justify-content:flex-start"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Arrêter l'appli</button>
       <div class="seg" id="themeSeg"><button data-theme-set="light">Clair</button><button data-theme-set="dark">Sombre</button></div>
       <div class="seg"><button data-act="txt-" aria-label="Texte plus petit">A−</button><button data-act="txt+" aria-label="Texte plus grand">A+</button></div>
     </div>
@@ -709,9 +710,24 @@ R_.reglages=()=>`<div class="grid" style="max-width:720px">
   ${accessPanel()}
   <div class="panel"><div class="panel-h"><h2>Affichage</h2></div><div class="panel-b grid" style="gap:10px"><div class="seg" style="max-width:260px"><button data-theme-set="light" aria-pressed="${!document.documentElement.dataset.theme}">Clair</button><button data-theme-set="dark" aria-pressed="${document.documentElement.dataset.theme==="dark"}">Sombre</button></div><div class="seg" style="max-width:260px"><button data-act="txt-">Texte plus petit</button><button data-act="txt+">Texte plus grand</button></div></div></div>
   <div class="panel"><div class="panel-h"><h2>Code d'accès</h2></div><div class="panel-b grid" style="gap:10px"><div class="rowform"><input id="nc" type="password" placeholder="Nouveau code" autocomplete="new-password"><button class="btn sm" data-act="changeCode">Changer le code</button></div><p class="note" style="margin:0">Les autres appareils devront retaper le nouveau code.</p><button class="btn sm ghost" style="justify-self:start" data-act="logout">Se déconnecter sur cet appareil</button></div></div>
+  <div class="panel"><div class="panel-h"><h2>Arrêter Apo aventure</h2></div><div class="panel-b grid" style="gap:10px"><p class="note" style="margin:0">Enregistre tout ce qui est en cours puis arrête l'appli sur le Mac. Elle redémarre à la prochaine ouverture de session, ou d'un double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure.</p>${stopBox()}</div></div>
   <div class="panel"><div class="panel-h"><h2>Autres romans</h2></div><div class="panel-b"><button class="btn" data-act="projects">Changer de roman ou de saga</button></div></div>
 </div>`;
 after.reglages=fillAccess;
+
+/* ================= ARRÊT ================= */
+function stopBox(){return st.confirm==="stop"?`<div class="confirm"><span>Arrêter Apo aventure ? Le Mac et l'iPhone ne pourront plus l'ouvrir jusqu'à la relance.</span><div class="chips"><button class="btn sm danger" data-act="stopApp">Enregistrer et arrêter</button><button class="btn sm" data-act="noConfirm">Annuler</button></div></div>`:`<button class="btn danger" style="justify-self:start" data-act="askConfirm" data-what="stop"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Arrêter l'appli</button>`}
+async function stopApp(){
+  toast("Enregistrement en cours…");
+  flushAll();
+  const t0=Date.now();
+  while(Object.keys(pend).length&&Date.now()-t0<8000){await new Promise(r=>setTimeout(r,250))}
+  if(Object.keys(pend).length){st.confirm=null;render();openDrawer("Arrêt annulé",`<p style="margin:0">Certaines modifications n'ont pas pu être enregistrées sur le Mac (${Object.keys(pend).length}). Je n'arrête rien pour ne rien perdre. Vérifie la connexion, puis réessaie.</p>`);return}
+  try{await api("POST","/api/shutdown")}catch(e){if(e.status===401)return}
+  ls.del(qKey());
+  document.body.classList.remove("focus");closeDrawer();
+  $("#root").innerHTML=`<div class="gate"><div class="panel"><div class="brand"><div class="brand-mark">A</div><b>Apo aventure</b></div><h1>Apo aventure est arrêté</h1><p style="margin:0">Tout est enregistré dans le dossier « Documents / Apo aventure » du Mac.</p><p class="muted" style="margin:0">Pour relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure, ou redémarre le Mac. Puis recharge cette page.</p><button class="btn" onclick="location.reload()">Recharger</button></div></div>`;
+}
 
 /* ================= TIROIR, TOAST ================= */
 function openDrawer(t,html){$("#dTitle").textContent=t;$("#dBody").innerHTML=html;$("#drawer").classList.add("on");$("#scrim").classList.add("on")}
@@ -729,7 +745,7 @@ document.addEventListener("click",async e=>{
   if(!t)return;
   const d=t.dataset;
   if(d.open){openProject(d.open);return}
-  if(d.go){go(d.go);return}
+  if(d.go){if(d.stop)st.confirm="stop";go(d.go);if(d.stop)setTimeout(()=>$("[data-act=stopApp]")?.scrollIntoView({block:"center"}),50);return}
   if(d.toggle!==undefined){t.setAttribute("aria-pressed",t.getAttribute("aria-pressed")!=="true");return}
   if(d.tagadd){const i=$("#itg");i.value=(i.value?i.value.replace(/,\s*$/,"")+", ":"")+d.tagadd;return}
   if(d.themeSet){if(d.themeSet==="light")delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme="dark";try{localStorage.setItem("apo-theme",d.themeSet)}catch(x){}$$("[data-theme-set]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.themeSet===d.themeSet));return}
@@ -766,7 +782,7 @@ document.addEventListener("click",async e=>{
     case"newProj":newProjForm(d.parent,false);return;
     case"newSaga":newProjForm(null,true);return;
     case"seedDemo":seedDemo();return;
-    case"settingsGlobal":openDrawer("Réglages",`<div class="seg"><button data-theme-set="light" aria-pressed="${!document.documentElement.dataset.theme}">Clair</button><button data-theme-set="dark" aria-pressed="${document.documentElement.dataset.theme==="dark"}">Sombre</button></div><button class="btn" data-act="logout">Se déconnecter sur cet appareil</button>`);return;
+    case"settingsGlobal":openDrawer("Réglages",`<div class="seg"><button data-theme-set="light" aria-pressed="${!document.documentElement.dataset.theme}">Clair</button><button data-theme-set="dark" aria-pressed="${document.documentElement.dataset.theme==="dark"}">Sombre</button></div><button class="btn" data-act="logout">Se déconnecter sur cet appareil</button><button class="btn danger" data-act="stopApp">Enregistrer et arrêter l'appli</button>`);return;
     case"saveIdea":{const v=$("#it").value.trim();if(!v){$("#it").focus();return}save("idees",{texte:v,tags:$("#itg").value.split(",").map(s=>s.trim()).filter(Boolean),tri:true},0);closeDrawer();toast("Idée enregistrée.");if(["idees","accueil"].includes(st.view))render();return}
     case"delIdea":if(await remove("idees",d.id)){render();toast("Idée supprimée.")}return;
     case"newChar":newChar();return;
@@ -805,6 +821,7 @@ document.addEventListener("click",async e=>{
     case"saveProj":Object.assign(DB.projet,{titre:$("#pT").value,genre:$("#pG").value,resume:$("#pR").value,chapitres:Math.max(1,+$("#pC").value||1)});saveProjet();st.chap=Math.min(st.chap,nChap());render();toast("Projet enregistré.");return;
     case"editProj":go("reglages");return;
     case"changeCode":{const c=$("#nc").value;try{await api("POST","/api/setup",{code:c});toast("Code changé.");$("#nc").value=""}catch(x){toast(x.message)}return}
+    case"stopApp":stopApp();return;
     case"logout":await api("POST","/api/logout").catch(()=>{});location.reload();return;
     case"keepMine":{const k=d.coll+"/"+d.id;const o=get(d.coll,d.id);pend[k]={coll:d.coll,id:d.id,seq:1,force:true};closeDrawer();flush(k);toast("Ta version est gardée.");return}
     case"takeTheirs":{const th=CONFLICTS[d.coll+"/"+d.id];const o=get(d.coll,d.id);if(th){Object.keys(o).forEach(k=>delete o[k]);Object.assign(o,th)}closeDrawer();render();toast("L'autre version est reprise.");return}

@@ -183,7 +183,7 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 
 	type para struct {
 		Style, Text string
-		Break        bool
+		Break       bool
 	}
 	doc := []para{{"Title", str(projet["titre"], "Sans titre"), false}}
 	if res := str(projet["resume"], ""); res != "" {

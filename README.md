@@ -10,6 +10,8 @@ Double-clic sur **Installer Apo aventure.command**. Le programme est copié dans
 
 Au premier lancement, choisis un code d'accès. Sur l'iPhone, scanne le QR code de l'accueil (ou de Réglages), puis dans Safari : Partager, « Sur l'écran d'accueil ».
 
+Arrêter : bouton « Arrêter l'appli » (barre latérale ou Réglages). Tout est enregistré avant l'arrêt. Relancer : double-clic sur « Démarrer Apo aventure » dans `~/Applications/Apo aventure`, ou ouvrir une nouvelle session.
+
 Désinstaller : `~/Applications/Apo\ aventure/apo uninstall` (les données restent).
 
 ## Où sont les données
