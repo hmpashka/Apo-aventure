@@ -13,10 +13,17 @@ import (
 
 const label = "fr.apo.aventure"
 
-// install : démarrage automatique à l'ouverture de session sur le Mac (launchd).
+// Le programme ne démarre JAMAIS tout seul à l'ouverture de session : la
+// description launchd est rangée à côté du programme (pas dans LaunchAgents),
+// et ne sert qu'à le relancer s'il plante pendant qu'il tourne.
+// On le démarre d'un double-clic sur « Démarrer Apo aventure.command ».
+
+func plistFile(exe string) string { return filepath.Join(filepath.Dir(exe), label+".plist") }
+
+// install : prépare le démarrage manuel et lance l'appli une première fois.
 func install() {
 	if runtime.GOOS != "darwin" {
-		fmt.Println("L'installation automatique ne fonctionne que sur macOS.")
+		fmt.Println("L'installation ne fonctionne que sur macOS.")
 		return
 	}
 	exe, _ := os.Executable()
@@ -24,8 +31,13 @@ func install() {
 	home, _ := os.UserHomeDir()
 	logDir := filepath.Join(home, "Library", "Logs")
 	os.MkdirAll(logDir, 0o755)
-	plistPath := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
-	os.MkdirAll(filepath.Dir(plistPath), 0o755)
+	// ancienne version : retirer le démarrage automatique
+	old := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
+	if exists(old) {
+		exec.Command("launchctl", "unload", old).Run()
+		os.Remove(old)
+	}
+	plistPath := plistFile(exe)
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -33,7 +45,7 @@ func install() {
   <key>Label</key><string>%s</string>
   <key>ProgramArguments</key><array><string>%s</string><string>-data</string><string>%s</string><string>-port</string><string>%d</string></array>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>StandardOutPath</key><string>%s</string>
   <key>StandardErrorPath</key><string>%s</string>
 </dict>
@@ -43,39 +55,40 @@ func install() {
 		fmt.Println("Erreur :", err)
 		os.Exit(1)
 	}
+	writeStartScript(filepath.Dir(exe), plistPath)
 	exec.Command("launchctl", "unload", plistPath).Run()
-	if out, err := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command("launchctl", "load", plistPath).CombinedOutput(); err != nil {
 		fmt.Println("Erreur launchctl :", err, string(out))
 		os.Exit(1)
 	}
-	writeStartScript(filepath.Dir(exe), plistPath)
-	fmt.Printf("Apo aventure est installé et démarre avec la session.\nOuvre %s (ou http://localhost:%d sur ce Mac).\nDonnées : %s\n", appURL(), port, dataRoot)
+	fmt.Printf("Apo aventure est installé et lancé. Il ne démarre pas tout seul avec la session :\nrelance-le avec « Démarrer Apo aventure » dans %s.\nOuvre %s (ou http://localhost:%d sur ce Mac).\nDonnées : %s\n", filepath.Dir(exe), appURL(), port, dataRoot)
 }
 
 func uninstall() {
+	exe, _ := os.Executable()
+	exe, _ = filepath.EvalSymlinks(exe)
 	home, _ := os.UserHomeDir()
-	plistPath := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
-	exec.Command("launchctl", "unload", plistPath).Run()
-	os.Remove(plistPath)
-	fmt.Println("Démarrage automatique retiré. Tes données sont intactes :", dataRoot)
+	for _, p := range []string{plistFile(exe), filepath.Join(home, "Library", "LaunchAgents", label+".plist")} {
+		exec.Command("launchctl", "unload", p).Run()
+		os.Remove(p)
+	}
+	fmt.Println("Apo aventure est arrêté et désinstallé. Tes données sont intactes :", dataRoot)
 }
 
-// writeStartScript dépose « Démarrer Apo aventure.command » à côté du programme,
-// pour relancer l'appli d'un double-clic après un arrêt.
+// writeStartScript dépose « Démarrer Apo aventure.command » à côté du programme.
 func writeStartScript(dir, plistPath string) {
 	script := fmt.Sprintf(`#!/bin/sh
-# Double-clic : relance Apo aventure après un arrêt.
-launchctl load -w "%s" 2>/dev/null || true
+# Double-clic : démarre Apo aventure (ou le redémarre s'il tournait déjà).
+launchctl unload "%s" 2>/dev/null
+launchctl load "%s"
 sleep 1
 open "http://localhost:%d"
-`, plistPath, port)
-	p := filepath.Join(dir, "Démarrer Apo aventure.command")
-	os.WriteFile(p, []byte(script), 0o755)
+`, plistPath, plistPath, port)
+	os.WriteFile(filepath.Join(dir, "Démarrer Apo aventure.command"), []byte(script), 0o755)
 }
 
 // hShutdown attend la fin des écritures en cours, répond, puis arrête le serveur.
-// Lancé par launchd, il se retire de launchd jusqu'à la prochaine ouverture de
-// session (ou un double-clic sur « Démarrer Apo aventure »), sinon launchd le relancerait.
+// Une sortie normale (code 0) n'est pas relancée par launchd.
 func hShutdown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		jsonErr(w, 405, "méthode")
@@ -89,12 +102,6 @@ func hShutdown(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Arrêt demandé depuis l'application : données enregistrées, arrêt.")
 	go func() {
 		time.Sleep(400 * time.Millisecond)
-		home, _ := os.UserHomeDir()
-		plistPath := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
-		if runtime.GOOS == "darwin" && os.Getenv("XPC_SERVICE_NAME") == label && exists(plistPath) {
-			// sans -w : le démarrage automatique reste actif pour la prochaine session
-			exec.Command("launchctl", "unload", plistPath).Run()
-		}
 		os.Exit(0)
 	}()
 }

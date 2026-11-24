@@ -6,11 +6,11 @@ Un seul programme tourne sur le Mac. Il sert l'application dans le navigateur (M
 
 ## Installer sur le Mac
 
-Double-clic sur **Installer Apo aventure.command**. Le programme est copié dans `~/Applications/Apo aventure`, démarre avec la session, et le navigateur s'ouvre sur `http://localhost:4321`.
+Double-clic sur **Installer Apo aventure.command**. Le programme est copié dans `~/Applications/Apo aventure`, il est lancé une première fois et le navigateur s'ouvre sur `http://localhost:4321`. Il ne démarre **jamais** tout seul à l'ouverture de session : pour le lancer, double-clic sur **Démarrer Apo aventure** dans `~/Applications/Apo aventure`.
 
 Au premier lancement, choisis un code d'accès. Sur l'iPhone, scanne le QR code de l'accueil (ou de Réglages), puis dans Safari : Partager, « Sur l'écran d'accueil ».
 
-Arrêter : bouton « Arrêter l'appli » (barre latérale ou Réglages). Tout est enregistré avant l'arrêt. Relancer : double-clic sur « Démarrer Apo aventure » dans `~/Applications/Apo aventure`, ou ouvrir une nouvelle session.
+Arrêter : bouton « Arrêter l'appli » (barre latérale ou Réglages). Tout est enregistré avant l'arrêt. Relancer : double-clic sur « Démarrer Apo aventure » dans `~/Applications/Apo aventure`.
 
 Désinstaller : `~/Applications/Apo\ aventure/apo uninstall` (les données restent).
 

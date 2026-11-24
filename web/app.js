@@ -92,7 +92,7 @@ const CONFLICTS={};
 
 /* ================= DÉMARRAGE ================= */
 async function boot(){
-  let s;try{s=await api("GET","/api/state")}catch(e){$("#root").innerHTML=`<div class="gate"><div class="panel"><h1>Le Mac ne répond pas</h1><p class="muted">Vérifie que le Mac est allumé, ouvert ou en veille réseau, et sur le même Wi-Fi.</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div></div>`;return}
+  let s;try{s=await api("GET","/api/state")}catch(e){$("#root").innerHTML=`<div class="gate"><div class="panel"><h1>Le Mac ne répond pas</h1><p class="muted">Vérifie que l'appli est lancée sur le Mac (double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure), que le Mac est ouvert et sur le même Wi-Fi.</p><button class="btn primary" onclick="location.reload()">Réessayer</button></div></div>`;return}
   if(s.needSetup)return showSetup();
   if(!s.logged)return showGate();
   const last=ls.get("apo-last",null);
@@ -710,7 +710,7 @@ R_.reglages=()=>`<div class="grid" style="max-width:720px">
   ${accessPanel()}
   <div class="panel"><div class="panel-h"><h2>Affichage</h2></div><div class="panel-b grid" style="gap:10px"><div class="seg" style="max-width:260px"><button data-theme-set="light" aria-pressed="${!document.documentElement.dataset.theme}">Clair</button><button data-theme-set="dark" aria-pressed="${document.documentElement.dataset.theme==="dark"}">Sombre</button></div><div class="seg" style="max-width:260px"><button data-act="txt-">Texte plus petit</button><button data-act="txt+">Texte plus grand</button></div></div></div>
   <div class="panel"><div class="panel-h"><h2>Code d'accès</h2></div><div class="panel-b grid" style="gap:10px"><div class="rowform"><input id="nc" type="password" placeholder="Nouveau code" autocomplete="new-password"><button class="btn sm" data-act="changeCode">Changer le code</button></div><p class="note" style="margin:0">Les autres appareils devront retaper le nouveau code.</p><button class="btn sm ghost" style="justify-self:start" data-act="logout">Se déconnecter sur cet appareil</button></div></div>
-  <div class="panel"><div class="panel-h"><h2>Arrêter Apo aventure</h2></div><div class="panel-b grid" style="gap:10px"><p class="note" style="margin:0">Enregistre tout ce qui est en cours puis arrête l'appli sur le Mac. Elle redémarre à la prochaine ouverture de session, ou d'un double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure.</p>${stopBox()}</div></div>
+  <div class="panel"><div class="panel-h"><h2>Arrêter Apo aventure</h2></div><div class="panel-b grid" style="gap:10px"><p class="note" style="margin:0">Enregistre tout ce qui est en cours puis arrête l'appli sur le Mac. Pour la relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure. Elle ne démarre jamais toute seule.</p>${stopBox()}</div></div>
   <div class="panel"><div class="panel-h"><h2>Autres romans</h2></div><div class="panel-b"><button class="btn" data-act="projects">Changer de roman ou de saga</button></div></div>
 </div>`;
 after.reglages=fillAccess;
@@ -726,7 +726,7 @@ async function stopApp(){
   try{await api("POST","/api/shutdown")}catch(e){if(e.status===401)return}
   ls.del(qKey());
   document.body.classList.remove("focus");closeDrawer();
-  $("#root").innerHTML=`<div class="gate"><div class="panel"><div class="brand"><div class="brand-mark">A</div><b>Apo aventure</b></div><h1>Apo aventure est arrêté</h1><p style="margin:0">Tout est enregistré dans le dossier « Documents / Apo aventure » du Mac.</p><p class="muted" style="margin:0">Pour relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure, ou redémarre le Mac. Puis recharge cette page.</p><button class="btn" onclick="location.reload()">Recharger</button></div></div>`;
+  $("#root").innerHTML=`<div class="gate"><div class="panel"><div class="brand"><div class="brand-mark">A</div><b>Apo aventure</b></div><h1>Apo aventure est arrêté</h1><p style="margin:0">Tout est enregistré dans le dossier « Documents / Apo aventure » du Mac.</p><p class="muted" style="margin:0">Pour relancer : double-clic sur « Démarrer Apo aventure » dans Applications / Apo aventure, puis recharge cette page.</p><button class="btn" onclick="location.reload()">Recharger</button></div></div>`;
 }
 
 /* ================= TIROIR, TOAST ================= */

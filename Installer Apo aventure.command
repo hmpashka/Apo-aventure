@@ -1,5 +1,5 @@
 #!/bin/sh
-# Double-clic : installe Apo aventure sur ce Mac et le lance à chaque ouverture de session.
+# Double-clic : installe Apo aventure sur ce Mac et le lance une première fois.
 set -e
 cd "$(dirname "$0")"
 if [ "$(uname -m)" = "arm64" ]; then BIN=dist/apo-mac-arm64; else BIN=dist/apo-mac-intel; fi
@@ -13,4 +13,4 @@ sleep 1
 open "http://localhost:4321"
 echo
 echo "C'est installé. Tu peux fermer cette fenêtre."
-echo "Après un arrêt depuis l'appli, relance-la avec « Démarrer Apo aventure » dans Applications / Apo aventure."
+echo "Elle ne démarre pas toute seule : lance-la avec « Démarrer Apo aventure » dans Applications / Apo aventure."
