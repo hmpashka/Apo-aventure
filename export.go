@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -184,14 +185,15 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 	type para struct {
 		Style, Text string
 		Break       bool
+		Rich        bool
 	}
-	doc := []para{{"Title", str(projet["titre"], "Sans titre"), false}}
+	doc := []para{{Style: "Title", Text: str(projet["titre"], "Sans titre")}}
 	if res := str(projet["resume"], ""); res != "" {
-		doc = append(doc, para{"Normal", res, false})
+		doc = append(doc, para{Style: "Normal", Text: res, Break: false})
 	}
 	// feuille de jauges pour le lecteur
 	if len(vars) > 0 {
-		doc = append(doc, para{"Heading2", "Ta feuille d'aventure", false})
+		doc = append(doc, para{Style: "Heading2", Text: "Ta feuille d'aventure", Break: false})
 		ids := []string{}
 		for id := range vars {
 			ids = append(ids, id)
@@ -200,24 +202,24 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 		for _, id := range ids {
 			v := vars[id]
 			if str(v["type"], "") == "drapeau" {
-				doc = append(doc, para{"Normal", "☐ " + varName(id), false})
+				doc = append(doc, para{Style: "Normal", Text: "☐ " + varName(id), Break: false})
 			} else {
-				doc = append(doc, para{"Normal", fmt.Sprintf("%s : départ %v", varName(id), v["depart"]), false})
+				doc = append(doc, para{Style: "Normal", Text: fmt.Sprintf("%s : départ %v", varName(id), v["depart"]), Break: false})
 			}
 		}
 	}
 	for _, s := range order {
-		doc = append(doc, para{"Heading1", fmt.Sprintf("%d", s.N), true})
+		doc = append(doc, para{Style: "Heading1", Text: fmt.Sprintf("%d", s.N), Break: true})
 		if notes {
-			doc = append(doc, para{"Note", s.Titre, false})
+			doc = append(doc, para{Style: "Note", Text: s.Titre, Break: false})
 		}
 		for _, p := range strings.Split(strings.ReplaceAll(s.Texte, "\r", ""), "\n") {
-			if strings.TrimSpace(p) != "" {
-				doc = append(doc, para{"Normal", p, false})
+			if strings.TrimSpace(plainText(p)) != "" {
+				doc = append(doc, para{Style: "Normal", Text: p, Rich: true})
 			}
 		}
 		if s.Fin != "" {
-			doc = append(doc, para{"End", "FIN", false})
+			doc = append(doc, para{Style: "End", Text: "FIN", Break: false})
 			continue
 		}
 		for _, c := range choices[s.ID] {
@@ -233,7 +235,7 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 				line += " (" + et + ")"
 			}
 			line += fmt.Sprintf(" → rends-toi au %d.", t.N)
-			doc = append(doc, para{"Choice", line, false})
+			doc = append(doc, para{Style: "Choice", Text: line, Break: false})
 		}
 	}
 
@@ -245,7 +247,11 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 			if p.Break && i > 0 {
 				brk = `<w:r><w:br w:type="page"/></w:r>`
 			}
-			body.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>%s<w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>`, p.Style, brk, xmlEsc(p.Text)))
+			runs := `<w:r><w:t xml:space="preserve">` + xmlEsc(p.Text) + `</w:t></w:r>`
+			if p.Rich {
+				runs = richRuns(p.Text)
+			}
+			body.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>%s%s</w:p>`, p.Style, brk, runs))
 		}
 		data := makeDocx(body.String())
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
@@ -269,7 +275,11 @@ func hExport(w http.ResponseWriter, r *http.Request) {
 		case "End":
 			md.WriteString("**FIN**\n\n")
 		default:
-			md.WriteString(p.Text + "\n\n")
+			t := p.Text
+			if p.Rich {
+				t = spanRe.ReplaceAllString(t, "")
+			}
+			md.WriteString(t + "\n\n")
 		}
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
@@ -334,4 +344,94 @@ func makeDocx(body string) []byte {
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>`+body+`<w:sectPr><w:pgSz w:w="8640" w:h="12960"/><w:pgMar w:top="1080" w:right="900" w:bottom="1080" w:left="1080" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`)
 	z.Close()
 	return buf.Bytes()
+}
+
+// Texte des scènes : **gras**, *italique*, <u>souligné</u>,
+// <span class="t-s|t-l|t-xl">taille</span>, \* pour une étoile.
+var spanRe = regexp.MustCompile(`</?span[^>]*>`)
+
+func plainText(s string) string {
+	s = spanRe.ReplaceAllString(s, "")
+	s = strings.NewReplacer("<u>", "", "</u>", "", `\*`, "\x00", "*", "").Replace(s)
+	return strings.ReplaceAll(s, "\x00", "*")
+}
+
+// richRuns transforme une ligne mise en forme en suites <w:r> Word.
+func richRuns(line string) string {
+	sizes := map[string]int{"t-s": 20, "t-l": 30, "t-xl": 36}
+	var out, cur strings.Builder
+	bold, ital, und := false, false, false
+	stack := []int{}
+	emit := func() {
+		if cur.Len() == 0 {
+			return
+		}
+		rpr := ""
+		if bold {
+			rpr += "<w:b/>"
+		}
+		if ital {
+			rpr += "<w:i/>"
+		}
+		if und {
+			rpr += `<w:u w:val="single"/>`
+		}
+		if len(stack) > 0 && stack[len(stack)-1] > 0 {
+			rpr += fmt.Sprintf(`<w:sz w:val="%d"/>`, stack[len(stack)-1])
+		}
+		if rpr != "" {
+			rpr = "<w:rPr>" + rpr + "</w:rPr>"
+		}
+		out.WriteString("<w:r>" + rpr + `<w:t xml:space="preserve">` + xmlEsc(cur.String()) + "</w:t></w:r>")
+		cur.Reset()
+	}
+	for i := 0; i < len(line); {
+		rest := line[i:]
+		switch {
+		case strings.HasPrefix(rest, `\*`):
+			cur.WriteByte('*')
+			i += 2
+		case strings.HasPrefix(rest, "**"):
+			emit()
+			bold = !bold
+			i += 2
+		case rest[0] == '*':
+			emit()
+			ital = !ital
+			i++
+		case strings.HasPrefix(rest, "<u>"):
+			emit()
+			und = true
+			i += 3
+		case strings.HasPrefix(rest, "</u>"):
+			emit()
+			und = false
+			i += 4
+		case strings.HasPrefix(rest, "<span"):
+			emit()
+			j := strings.Index(rest, ">")
+			if j < 0 {
+				j = len(rest) - 1
+			}
+			sz := 0
+			for k, v := range sizes {
+				if strings.Contains(rest[:j], `"`+k+`"`) {
+					sz = v
+				}
+			}
+			stack = append(stack, sz)
+			i += j + 1
+		case strings.HasPrefix(rest, "</span>"):
+			emit()
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+			i += 7
+		default:
+			cur.WriteByte(line[i])
+			i++
+		}
+	}
+	emit()
+	return out.String()
 }

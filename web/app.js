@@ -83,7 +83,7 @@ function setSave(){
 function conflict(coll,mine,theirs){
   const name=coll==="scenes"?`la scène « ${mine.titre} »`:"cet élément";
   openDrawer("Modifié sur un autre appareil",`<p style="margin:0">${esc(name)} a été modifiée ailleurs (sur le Mac ou l'iPhone) pendant que tu écrivais ici. Choisis la version à garder ; l'autre reste dans l'historique de la scène.</p>
-   ${coll==="scenes"?`<div><div class="lbl">Ta version (cet appareil)</div><div class="diff">${esc((mine.texte||"").slice(-600))}</div></div><div><div class="lbl">L'autre version</div><div class="diff">${esc(((theirs&&theirs.texte)||"").slice(-600))}</div></div>`:""}
+   ${coll==="scenes"?`<div><div class="lbl">Ta version (cet appareil)</div><div class="diff">${esc(plain(mine.texte).slice(-600))}</div></div><div><div class="lbl">L'autre version</div><div class="diff">${esc(plain(theirs&&theirs.texte).slice(-600))}</div></div>`:""}
    <button class="btn primary" data-act="keepMine" data-coll="${coll}" data-id="${mine.id}">Garder ma version</button>
    <button class="btn" data-act="takeTheirs" data-coll="${coll}" data-id="${mine.id}">Prendre l'autre version</button>`);
   CONFLICTS[coll+"/"+mine.id]=theirs;
@@ -248,10 +248,70 @@ const short=id=>cname(id).split(" ")[0];
 const ini=n=>String(n||"?").split(/\s+/).map(w=>w[0]||"").join("").slice(0,2).toUpperCase();
 const av=(id,cls="")=>{const c=get("personnages",id);return `<span class="av ${cls}" style="background:${c?c.couleur||"#5C6176":"#5C6176"}">${esc(ini(c?c.nom:"?"))}</span>`};
 const stat=s=>`<span class="status st-${s||"idee"}">${STATUTS[s]||"idée"}</span>`;
-const rtag=t=>`<span class="rt" style="color:var(--r-${t})"><i style="background:var(--r-${t})"></i>${RT[t]||t}</span>`;
-const pips=(n,t)=>`<span class="pips" aria-label="intensité ${n} sur 5">${[1,2,3,4,5].map(i=>`<span style="${i<=n?`background:var(--r-${t})`:""}"></span>`).join("")}</span>`;
-const lieuNom=id=>{const l=get("lieux",id);return l?l.nom:(id||"")};
-const words=t=>(String(t||"").trim().match(/\S+/g)||[]).length;
+// catégories : celles de base + celles ajoutées dans le projet (projet.typesRelation)
+const customRT=()=>Array.isArray(DB&&DB.projet.typesRelation)?DB.projet.typesRelation:[];
+const relTypes=()=>[...Object.entries(RT).map(([id,label])=>({id,label,base:true})),...customRT()];
+const rlabel=t=>RT[t]||(customRT().find(x=>x.id===t)||{}).label||t;
+const rcol=t=>RT[t]?`var(--r-${t})`:((customRT().find(x=>x.id===t)||{}).couleur||"var(--muted)");
+const rtag=t=>`<span class="rt" style="color:${rcol(t)}"><i style="background:${rcol(t)}"></i>${esc(rlabel(t))}</span>`;
+const pips=(n,t)=>`<span class="pips" aria-label="intensité ${n} sur 5">${[1,2,3,4,5].map(i=>`<span style="${i<=n?`background:${rcol(t)}`:""}"></span>`).join("")}</span>`;
+const lieuNom=id=>{const l=get("lieux",id);if(!l)return id||"";const seen=new Set([l.id]);let n=l.nom,p=get("lieux",l.parent);while(p&&!seen.has(p.id)){seen.add(p.id);n=p.nom+" › "+n;p=get("lieux",p.parent)}return n};
+const lieuKids=pid=>list("lieux").filter(l=>(l.parent||"")===(pid||"")&&(pid||!l.parent||!get("lieux",l.parent))).sort((a,b)=>String(a.nom).localeCompare(b.nom));
+const lieuRoots=()=>list("lieux").filter(l=>!l.parent||!get("lieux",l.parent)).sort((a,b)=>String(a.nom).localeCompare(b.nom));
+function lieuOptions(sel,skip){const out=[];const walk=(l,d)=>{if(l.id===skip)return;out.push(`<option value="${l.id}" ${l.id===sel?"selected":""}>${"\u00a0\u00a0".repeat(d*2)}${d?"↳ ":""}${esc(l.nom)}</option>`);list("lieux").filter(x=>x.parent===l.id).sort((a,b)=>String(a.nom).localeCompare(b.nom)).forEach(k=>walk(k,d+1))};lieuRoots().forEach(l=>walk(l,0));return out.join("")}
+/* Texte des scènes : Markdown léger. **gras**, *italique*, <u>souligné</u>,
+   <span class="t-s|t-l|t-xl">taille</span>. Une ligne = un paragraphe. */
+const plain=t=>String(t||"").replace(/<\/?(u|span)[^>]*>/g,"").replace(/\*\*/g,"").replace(/(^|[^\\])\*/g,"$1").replace(/\\\*/g,"*");
+const words=t=>(plain(t).trim().match(/\S+/g)||[]).length;
+function inlineHtml(line){
+  let h=esc(line);
+  h=h.replace(/&lt;(\/?)u&gt;/g,"<$1u>").replace(/&lt;span class=&quot;(t-s|t-l|t-xl)&quot;&gt;/g,'<span class="$1">').replace(/&lt;\/span&gt;/g,"</span>");
+  h=h.replace(/\\\*/g,"\u0001");
+  h=h.replace(/\*\*([\s\S]+?)\*\*/g,"<b>$1</b>").replace(/\*([\s\S]+?)\*/g,"<i>$1</i>");
+  return h.replace(/\u0001/g,"*");
+}
+const mdToEditor=t=>String(t||"").split("\n").map(l=>`<div>${inlineHtml(l)||"<br>"}</div>`).join("");
+const mdToProse=t=>String(t||"").split("\n").filter(l=>plain(l).trim()).map(l=>`<p>${inlineHtml(l)}</p>`).join("");
+function editorToMd(root){
+  const SIZE={1:"t-s",2:"t-s",4:"t-l",5:"t-xl",6:"t-xl",7:"t-xl"};
+  const inl=n=>{
+    if(n.nodeType===3)return n.nodeValue.replace(/\*/g,"\\*").replace(/\u00a0/g," ");
+    if(n.nodeType!==1)return"";
+    const tag=n.tagName,kids=[...n.childNodes].map(inl).join("");
+    if(tag==="BR")return"\n";
+    if(!kids)return"";
+    const st=n.style||{};let out=kids;
+    let size=n.classList&&["t-s","t-l","t-xl"].find(c=>n.classList.contains(c));
+    if(!size&&tag==="FONT"&&n.getAttribute("size"))size=SIZE[n.getAttribute("size")];
+    if(!size&&st.fontSize){const f=st.fontSize;size=/small|x-small/.test(f)?"t-s":/xx-large|xxx-large/.test(f)?"t-xl":/large/.test(f)?"t-l":null}
+    const bold=tag==="B"||tag==="STRONG"||/^(bold|[6-9]00)$/.test(st.fontWeight||"");
+    const ital=tag==="I"||tag==="EM"||st.fontStyle==="italic";
+    const und=tag==="U"||/underline/.test(st.textDecoration||st.textDecorationLine||"");
+    const wrap=(o,a,b)=>{const m=o.match(/^(\s*)([\s\S]*?)(\s*)$/);return m[2]?m[1]+a+m[2]+b+m[3]:o};
+    if(ital)out=wrap(out,"*","*");
+    if(bold)out=wrap(out,"**","**");
+    if(und)out=wrap(out,"<u>","</u>");
+    if(size)out=wrap(out,`<span class="${size}">`,"</span>");
+    return out;
+  };
+  const lines=[];let cur="";
+  const flush=()=>{lines.push(cur);cur=""};
+  [...root.childNodes].forEach(n=>{
+    if(n.nodeType===1&&(n.tagName==="DIV"||n.tagName==="P")){if(cur)flush();const t=[...n.childNodes].map(inl).join("");t.split("\n").forEach((x,i,a)=>{if(i<a.length-1||x||a.length===1)lines.push(x)});if(lines.length&&lines[lines.length-1]===""&&t.endsWith("\n"))lines.pop()}
+    else{const t=inl(n);const parts=t.split("\n");cur+=parts.shift();parts.forEach(x=>{flush();cur=x})}
+  });
+  if(cur||!lines.length)flush();
+  while(lines.length>1&&lines[lines.length-1]==="")lines.pop();
+  return lines.join("\n").replace(/\*\*\*\*/g,"").replace(/<\/u><u>/g,"");
+}
+function fmt(cmd,v){
+  const ed=$("#edText");if(!ed)return;ed.focus();
+  try{document.execCommand("styleWithCSS",false,false)}catch(e){}
+  if(cmd==="size")document.execCommand("fontSize",false,v);
+  else if(cmd==="clear")document.execCommand("removeFormat");
+  else document.execCommand(cmd);
+  ed.dispatchEvent(new Event("input"));
+}
 const sceneT=id=>{const s=get("scenes",id);return s?s.titre||"Sans titre":"(scène supprimée)"};
 const scenesSorted=()=>list("scenes").slice().sort((a,b)=>(+a.chap||1)-(+b.chap||1)||String(a.titre).localeCompare(b.titre));
 const vars=()=>list("variables").slice().sort((a,b)=>(a.type===b.type?0:a.type==="jauge"?-1:1)||String(a.nom).localeCompare(b.nom));
@@ -327,11 +387,29 @@ function fillAccess(){api("GET","/api/info").then(i=>{const u=$("#appUrl");if(u)
 after.accueil=fillAccess;
 
 /* --- personnages --- */
+const SORTS={ordre:"Ordre de création",nom:"Nom",couleur:"Couleur",role:"Rôle",etiquette:"Étiquette"};
+function charsView(){
+  const all=chars(),srt=st.charSort||(ls.get("apo-charview",{}).sort)||"ordre";st.charSort=srt;
+  let cs=all.filter(c=>(!st.charFCol||c.couleur===st.charFCol)&&(!st.charFTag||(c.tags||[]).includes(st.charFTag)));
+  const pi=c=>{const i=PALETTE.indexOf(c.couleur);return i<0?99:i};
+  const cmp={nom:(a,b)=>String(a.nom).localeCompare(b.nom),couleur:(a,b)=>pi(a)-pi(b)||String(a.nom).localeCompare(b.nom),role:(a,b)=>String(a.role||"~").localeCompare(String(b.role||"~"))||String(a.nom).localeCompare(b.nom),etiquette:(a,b)=>String((a.tags||[])[0]||"~").localeCompare(String((b.tags||[])[0]||"~"))||String(a.nom).localeCompare(b.nom)}[srt];
+  if(cmp)cs=cs.slice().sort(cmp);
+  return {all,cs};
+}
 R_.personnages=()=>{
   if(st.charSel&&get("personnages",st.charSel))return fiche(st.charSel);
-  const cs=chars();
-  return `<div class="toolbar"><span class="note">${cs.length} personnage${cs.length>1?"s":""}</span><span class="spacer"></span><button class="btn primary sm" data-act="newChar">+ Personnage</button></div>
-  ${cs.length?`<div class="cards">${cs.map(c=>`<button class="panel ccard" data-char="${c.id}"><div class="hd">${av(c.id)}<div style="min-width:0"><h3>${esc(c.nom)}</h3><span class="muted" style="font-size:13px">${esc(c.role||"")}${c.age?" · "+esc(c.age)+" ans":""}</span></div></div><p>${esc(c.personnalite||"")}</p><div class="chips">${(c.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}<span class="chip ink">${list("scenes").filter(s=>(s.persos||[]).includes(c.id)).length} scènes</span></div></button>`).join("")}</div>`:'<div class="panel empty">Aucun personnage. Crée le premier : il apparaîtra aussitôt dans les relations, la chronologie et les scènes.</div>'}`;
+  const {all,cs}=charsView();
+  const cols=[...new Set(all.map(c=>c.couleur).filter(Boolean))].sort((a,b)=>PALETTE.indexOf(a)-PALETTE.indexOf(b));
+  const tags=[...new Set(all.flatMap(c=>c.tags||[]))].sort((a,b)=>a.localeCompare(b));
+  const filtering=st.charFCol||st.charFTag;
+  return `<div class="toolbar"><span class="note">${filtering?`${cs.length} sur ${all.length}`:all.length} personnage${all.length>1?"s":""}</span><span class="spacer"></span><button class="btn primary sm" data-act="newChar">+ Personnage</button></div>
+  ${all.length>1?`<div class="panel" style="padding:12px 14px;margin-bottom:14px;display:grid;gap:10px">
+    <div class="rowform"><span class="lbl" style="margin:0;width:70px">Trier</span><div class="seg" style="width:auto;flex-wrap:wrap">${Object.entries(SORTS).map(([k,l])=>`<button data-act="charSort" data-v="${k}" aria-pressed="${st.charSort===k}">${l}</button>`).join("")}</div></div>
+    ${cols.length>1?`<div class="rowform"><span class="lbl" style="margin:0;width:70px">Couleur</span><div class="colors">${cols.map(c=>`<button style="background:${c}" aria-label="Filtrer par cette couleur" aria-pressed="${st.charFCol===c}" data-act="charFCol" data-v="${c}"></button>`).join("")}</div></div>`:""}
+    ${tags.length?`<div class="rowform"><span class="lbl" style="margin:0;width:70px">Étiquette</span><div class="chips">${tags.map(t=>`<button class="chip ${st.charFTag===t?"acc":""}" data-act="charFTag" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>`:""}
+    ${filtering?`<button class="btn sm ghost" style="justify-self:start" data-act="charFClear">Tout afficher</button>`:""}
+  </div>`:""}
+  ${!all.length?'<div class="panel empty">Aucun personnage. Crée le premier : il apparaîtra aussitôt dans les relations, la chronologie et les scènes.</div>':!cs.length?'<div class="panel empty">Aucun personnage ne correspond à ce filtre.</div>':`<div class="cards">${cs.map(c=>`<button class="panel ccard" data-char="${c.id}"><div class="hd">${av(c.id)}<div style="min-width:0"><h3>${esc(c.nom)}</h3><span class="muted" style="font-size:13px">${esc(c.role||"")}${c.age?" · "+esc(c.age)+" ans":""}</span></div></div><p>${esc(c.personnalite||"")}</p><div class="chips">${(c.tags||[]).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}<span class="chip ink">${list("scenes").filter(s=>(s.persos||[]).includes(c.id)).length} scènes</span></div></button>`).join("")}</div>`}`;
 };
 const FIELDS=[["apparence","Apparence"],["personnalite","Personnalité"],["voix","Voix, tics de langage"],["passe","Passé"],["secret","Secrets"],["desir","Désirs"],["peur","Peurs"],["notes","Notes libres"]];
 function fiche(id){
@@ -382,7 +460,7 @@ R_.relations=()=>{
   const mine=list("relations").filter(r=>(r.a===st.relChar||r.b===st.relChar)&&relAt(r)).sort((x,y)=>x.a===st.relChar?-1:1);
   const mob=`<div class="rel-mobile"><div class="chips">${cs.map(c=>`<button class="chip ${st.relChar===c.id?"acc":""}" data-relchar="${c.id}">${esc(short(c.id))}</button>`).join("")}</div>
     <div class="panel"><div class="panel-h">${av(st.relChar,"sm")}<h2 style="flex:1">Relations de ${esc(short(st.relChar))}</h2><button class="btn sm" data-act="newRelFor">+</button></div><div class="panel-b list">${mine.map(r=>{const e=relAt(r),other=r.a===st.relChar?r.b:r.a;return `<button class="row" style="border-left:0;border-right:0;border-top:0;background:none;width:100%;text-align:left" data-rel="${r.a}>${r.b}">${av(other,"sm")}<div class="grow"><b>${r.a===st.relChar?"→ "+esc(short(r.b)):esc(short(r.a))+" →"}</b><small>${esc(e.note||"")}</small></div><div style="display:grid;justify-items:end;gap:4px">${rtag(e.type)}${pips(e.int||1,e.type)}</div></button>`}).join("")||'<span class="note">Aucune relation à ce chapitre.</span>'}</div></div></div>`;
-  return `<div class="toolbar">${chSel}</div>${desk}${mob}<div class="legend">${Object.keys(RT).map(rtag).join("")}</div>`;
+  return `<div class="toolbar">${chSel}</div>${desk}${mob}<div class="legend">${relTypes().map(x=>rtag(x.id)).join("")}<button class="btn sm ghost" data-act="relCats">+ Gérer les catégories</button></div>`;
 };
 after.relations=()=>{const s=$("#chap");s&&s.addEventListener("input",()=>{st.chap=+s.value;render()})};
 function openRel(k){
@@ -391,15 +469,27 @@ function openRel(k){
   openDrawer(`${short(a)} → ${short(b)}`,`
     <div style="display:flex;gap:8px;align-items:center">${av(a)}<span class="muted">ce que ${esc(short(a))} ressent pour</span>${av(b)}</div>
     ${own||!r?"":`<p class="note" style="margin:0">Pas de changement saisi au chapitre ${st.chap} : la relation reprend l'état précédent. Enregistrer crée un nouvel état à partir de ce chapitre.</p>`}
-    <div class="field"><label for="rt">Type (à partir du chapitre ${st.chap})</label><select id="rt">${Object.entries(RT).map(([k2,l])=>`<option value="${k2}" ${k2===e.type?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="field"><label for="rt">Type (à partir du chapitre ${st.chap})</label><select id="rt">${relTypes().map(x=>`<option value="${x.id}" ${x.id===e.type?"selected":""}>${esc(x.label)}</option>`).join("")}</select><button type="button" class="btn sm ghost" style="justify-self:start" data-act="relCats">Gérer les catégories</button></div>
     <div class="field"><label for="ri">Intensité : <b id="riv">${e.int||2}</b> / 5</label><input id="ri" type="range" min="1" max="5" value="${e.int||2}" style="accent-color:var(--accent)"></div>
     <div class="field"><label for="rn">Note</label><textarea id="rn">${esc(e.note||"")}</textarea></div>
     <div class="field"><label for="rj">Jauge liée (facultatif)</label><select id="rj"><option value="">Aucune</option>${vars().filter(v=>v.type==="jauge").map(v=>`<option value="${v.id}" ${r&&r.jauge===v.id?"selected":""}>${esc(v.nom)}</option>`).join("")}</select></div>
     ${r&&r.etats?`<div><div class="lbl">Évolution</div><div class="list">${Object.keys(r.etats).map(Number).sort((x,y)=>x-y).map(c=>`<div class="row"><b style="width:80px">Dès ch. ${c}</b>${rtag(r.etats[c].type)}${pips(r.etats[c].int||1,r.etats[c].type)}<span class="grow note">${esc(r.etats[c].note||"")}</span></div>`).join("")}</div></div>`:""}
-    <div class="note">Dans l'autre sens : ${relAt(relObj(b,a))?`${esc(short(b))} → ${esc(short(a))} est « ${RT[relAt(relObj(b,a)).type].toLowerCase()} ».`:"rien de saisi."}</div>
+    <div class="note">Dans l'autre sens : ${relAt(relObj(b,a))?`${esc(short(b))} → ${esc(short(a))} est « ${esc(rlabel(relAt(relObj(b,a)).type).toLowerCase())} ».`:"rien de saisi."}</div>
     <button class="btn primary" data-act="saveRel" data-k="${k}">Enregistrer</button>
     ${own?`<button class="btn ghost danger" data-act="delRelState" data-k="${k}">Retirer l'état du chapitre ${st.chap}</button>`:""}`);
   const ri=$("#ri");ri.addEventListener("input",()=>$("#riv").textContent=ri.value);
+}
+const CATCOLS=["#C2185B","#D9703A","#22908A","#3B68B0","#B98A1F","#A92A21","#76699A","#647834","#8A3FA8","#0E7C9E","#5C6176"];
+function relCatsForm(){
+  const cs=customRT();
+  openDrawer("Catégories de relation",`<p class="note" style="margin:0">Les catégories de base restent toujours disponibles. Ajoute les tiennes (« ex », « protecteur », « mentor »…) : elles apparaissent dans la matrice, la légende et les fiches.</p>
+  <div class="legend" style="margin:0">${Object.keys(RT).map(rtag).join("")}</div>
+  <div class="lbl">Tes catégories</div>
+  <div class="grid" style="gap:8px">${cs.map((c,i)=>`<div class="sublieu" style="gap:8px"><div class="rowform"><span class="rt" style="color:${c.couleur}"><i style="background:${c.couleur}"></i></span><input data-catl="${i}" value="${esc(c.label)}" style="flex:1;min-width:0"><button class="x" data-act="catDel" data-i="${i}" aria-label="Supprimer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="colors">${CATCOLS.map(col=>`<button style="background:${col};width:22px;height:22px" aria-label="Couleur" aria-pressed="${c.couleur===col}" data-act="catCol" data-i="${i}" data-col="${col}"></button>`).join("")}</div><span class="note">${list("relations").filter(r=>Object.values(r.etats||{}).some(e=>e.type===c.id)).length} relation(s) l'utilisent</span></div>`).join("")||'<span class="note">Aucune pour l\'instant.</span>'}</div>
+  <form id="catf" class="rowform"><input id="catN" placeholder="Nouvelle catégorie" style="flex:1" required><button class="btn sm primary">Ajouter</button></form>`);
+  $("#catf").onsubmit=e=>{e.preventDefault();const label=$("#catN").value.trim();if(!label)return;const used=customRT().map(c=>c.couleur);
+    DB.projet.typesRelation=[...customRT(),{id:"c_"+uid(),label,couleur:CATCOLS.find(c=>!used.includes(c))||CATCOLS[0]}];saveProjet();relCatsForm();render()};
+  $$("[data-catl]").forEach(i=>i.addEventListener("change",()=>{const a=customRT();a[+i.dataset.catl].label=i.value.trim()||a[+i.dataset.catl].label;DB.projet.typesRelation=a;saveProjet();render()}));
 }
 function pickRelTarget(){
   openDrawer("Nouvelle relation",`<div class="field"><label>De</label><div class="pick">${chars().map(c=>`<button data-act="relPickA" data-id="${c.id}" aria-pressed="${c.id===st.relChar}">${esc(c.nom)}</button>`).join("")}</div></div><div class="field"><label>Vers</label><div class="pick">${chars().filter(c=>c.id!==st.relChar).map(c=>`<button data-rel="${st.relChar}>${c.id}">${esc(c.nom)}</button>`).join("")}</div></div>`);
@@ -432,7 +522,7 @@ function evForm(e){
     <div class="field"><label for="eQ">Quand (dans le temps de l'histoire)</label><input id="eQ" value="${esc(e.quand)}" list="eQl" placeholder="Jour 3, soir"><datalist id="eQl">${ms.map(m=>`<option value="${esc(m.k)}">`).join("")}</datalist></div>
     <div class="field"><label for="eO">Position sur la frise (nombre, pour l'ordre)</label><input id="eO" type="number" step="any" value="${esc(e.ordre)}" placeholder="${ms.length?Math.round(Math.max(...ms.map(m=>m.o))+1):1}"></div>
     <div class="field"><label>Personnages</label><div class="pick" id="eP">${chars().map(c=>`<button type="button" data-toggle aria-pressed="${(e.persos||[]).includes(c.id)}" data-id="${c.id}">${esc(c.nom)}</button>`).join("")||'<span class="note">Aucun personnage</span>'}</div></div>
-    <div class="field"><label for="eL">Lieu</label><select id="eL"><option value="">—</option>${list("lieux").map(l=>`<option value="${l.id}" ${l.id===e.lieu?"selected":""}>${esc(l.nom)}</option>`).join("")}</select></div>
+    <div class="field"><label for="eL">Lieu</label><select id="eL"><option value="">—</option>${lieuOptions(e.lieu)}</select></div>
     <div class="field"><label for="eS">Scène liée</label><select id="eS"><option value="">—</option>${scenesSorted().map(s=>`<option value="${s.id}" ${s.id===e.scene?"selected":""}>Ch. ${s.chap||1} · ${esc(s.titre)}</option>`).join("")}</select></div>
     <div class="field"><label for="eB">N'existe que dans la branche (facultatif)</label><input id="eB" value="${esc(e.branche||"")}" placeholder="Branche Lina"></div>
     <div class="field"><label for="eD">Description</label><textarea id="eD">${esc(e.description||"")}</textarea></div>
@@ -448,8 +538,14 @@ function evForm(e){
 }
 
 /* --- lieux --- */
-R_.lieux=()=>`<div class="toolbar"><span class="note">Les lieux servent aux scènes, aux événements et à la recherche.</span><span class="spacer"></span><button class="btn primary sm" data-act="newLieu">+ Lieu</button></div>
-  ${list("lieux").length?`<div class="ideas">${list("lieux").slice().sort((a,b)=>String(a.nom).localeCompare(b.nom)).map(l=>`<div class="panel idea"><input class="inline-in" data-lf="nom" data-id="${l.id}" value="${esc(l.nom)}" style="font-weight:700;font-size:16px"><textarea class="inline-in" data-lf="description" data-id="${l.id}" rows="3" placeholder="Description, ambiance…">${esc(l.description||"")}</textarea><div class="chips"><span class="chip ink">${list("scenes").filter(s=>s.lieu===l.id).length} scènes</span><span class="chip">${list("evenements").filter(e=>e.lieu===l.id).length} événements</span><span style="flex:1"></span><button class="btn sm ghost danger" data-act="delLieu" data-id="${l.id}">Supprimer</button></div></div>`).join("")}</div>`:'<div class="panel empty">Aucun lieu pour l\'instant.</div>'}`;
+R_.lieux=()=>{
+  const card=(l,depth)=>{const kids=list("lieux").filter(x=>x.parent===l.id).sort((a,b)=>String(a.nom).localeCompare(b.nom));
+    return `<div class="${depth?"sublieu":"panel idea"}">${depth?`<div class="note" style="margin-bottom:2px">↳ dans ${esc(lieuNom(l.parent))}</div>`:""}<input class="inline-in" data-lf="nom" data-id="${l.id}" value="${esc(l.nom)}" style="font-weight:700;font-size:${depth?15:16}px"><textarea class="inline-in" data-lf="description" data-id="${l.id}" rows="${depth?2:3}" placeholder="Description, ambiance…">${esc(l.description||"")}</textarea>
+    <div class="chips"><span class="chip ink">${list("scenes").filter(s=>s.lieu===l.id).length} scènes</span><span class="chip">${list("evenements").filter(e=>e.lieu===l.id).length} événements</span><span style="flex:1"></span><button class="btn sm" data-act="newSubLieu" data-id="${l.id}">+ Sous-lieu</button><button class="btn sm ghost danger" data-act="delLieu" data-id="${l.id}">Supprimer</button></div>
+    ${kids.length?`<div class="sublieux">${kids.map(k=>card(k,depth+1)).join("")}</div>`:""}</div>`};
+  return `<div class="toolbar"><span class="note">Un lieu peut contenir des sous-lieux (l'hôtel › la chambre 214). Ils servent aux scènes, aux événements et à la recherche.</span><span class="spacer"></span><button class="btn primary sm" data-act="newLieu">+ Lieu</button></div>
+  ${list("lieux").length?`<div class="ideas lieuxg">${lieuRoots().map(l=>card(l,0)).join("")}</div>`:'<div class="panel empty">Aucun lieu pour l\'instant.</div>'}`;
+};
 after.lieux=()=>$$("[data-lf]").forEach(el=>el.addEventListener("input",()=>{const l=get("lieux",el.dataset.id);l[el.dataset.lf]=el.value;save("lieux",l)}));
 
 /* --- graphe --- */
@@ -585,12 +681,24 @@ R_.scene=()=>{
       <input class="t" id="edTitle" value="${esc(s.titre)}" aria-label="Titre de la scène">
       <div class="ed-meta hide-focus">
         <select id="edChap" aria-label="Chapitre">${Array.from({length:nChap()},(_,i)=>`<option value="${i+1}" ${(+s.chap||1)===i+1?"selected":""}>Chapitre ${i+1}</option>`).join("")}</select>
-        <select id="edLieu" aria-label="Lieu"><option value="">Lieu…</option>${list("lieux").map(l=>`<option value="${l.id}" ${l.id===s.lieu?"selected":""}>${esc(l.nom)}</option>`).join("")}<option value="__new">+ Nouveau lieu</option></select>
+        <select id="edLieu" aria-label="Lieu"><option value="">Lieu…</option>${lieuOptions(s.lieu)}<option value="__new">+ Nouveau lieu</option></select>
         ${Object.keys(STATUTS).map(x=>`<button class="status st-${x}" style="border:0;${x===(s.statut||"idee")?"outline:2px solid currentColor":"opacity:.55"}" data-statut="${x}">${STATUTS[x]}</button>`).join("")}
         <label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="edFin" ${s.fin?"checked":""} style="accent-color:var(--accent)">C'est une fin</label>
         ${s.fin?`<input id="edFinT" class="inline-in" style="width:220px;border-color:var(--line)" value="${esc(s.fin)}" placeholder="Fin heureuse avec…">`:""}
       </div>
-      <textarea id="edText" aria-label="Texte de la scène" spellcheck="true" placeholder="Écris ici. Tape @ pour citer un personnage ou un lieu.">${esc(s.texte||"")}</textarea>
+      <div class="fmtbar hide-focus-no" role="toolbar" aria-label="Mise en forme">
+        <button data-act="fmt" data-cmd="bold" title="Gras (⌘B)" aria-label="Gras"><b>G</b></button>
+        <button data-act="fmt" data-cmd="italic" title="Italique (⌘I)" aria-label="Italique"><i style="font-family:var(--f-text)">I</i></button>
+        <button data-act="fmt" data-cmd="underline" title="Souligné (⌘U)" aria-label="Souligné"><u>S</u></button>
+        <span class="sep"></span>
+        <button data-act="fmt" data-cmd="size" data-v="2" title="Petit" aria-label="Petit texte"><span style="font-size:12px">A</span></button>
+        <button data-act="fmt" data-cmd="size" data-v="3" title="Taille normale" aria-label="Taille normale"><span style="font-size:15px">A</span></button>
+        <button data-act="fmt" data-cmd="size" data-v="4" title="Grand" aria-label="Grand texte"><span style="font-size:18px">A</span></button>
+        <button data-act="fmt" data-cmd="size" data-v="5" title="Très grand" aria-label="Très grand texte"><span style="font-size:21px">A</span></button>
+        <span class="sep"></span>
+        <button data-act="fmt" data-cmd="clear" title="Effacer la mise en forme" aria-label="Effacer la mise en forme">⌫</button>
+      </div>
+      <div id="edText" class="rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Texte de la scène" spellcheck="true" data-ph="Écris ici. Tape @ pour citer un personnage ou un lieu.">${mdToEditor(s.texte||"")}</div>
       <div class="mention-pop" id="mpop" hidden></div>
     </div>
     <div class="grid ed-side hide-m" style="align-content:start">${edSide(id)}</div>
@@ -608,29 +716,39 @@ function edSide(id){
     ${st.confirm==="scene"?`<div class="confirm"><span>Supprimer cette scène et ses choix sortants ?</span><div class="chips"><button class="btn sm danger" data-act="delScene" data-id="${id}">Supprimer</button><button class="btn sm" data-act="noConfirm">Annuler</button></div></div>`:`<button class="btn sm ghost danger" style="justify-self:start" data-act="askConfirm" data-what="scene">Supprimer la scène</button>`}</div></div>`;
 }
 after.scene=()=>{
-  const ta=$("#edText");if(!ta)return;
+  const ed=$("#edText");if(!ed)return;
   const id=st.edScene,s=get("scenes",id),wc=$("#wc");
-  const count=()=>{wc.textContent=words(ta.value)+" mots"};count();
-  ta.addEventListener("input",()=>{s.texte=ta.value;count();save("scenes",s,1500);mention(ta)});
-  ta.addEventListener("keydown",e=>{const p=$("#mpop");if(!p.hidden&&(e.key==="Enter"||e.key==="Tab")){e.preventDefault();p.querySelector("button")?.click()}if(e.key==="Escape")p.hidden=true});
-  ta.addEventListener("blur",()=>{if(pend["scenes/"+id]){clearTimeout(pend["scenes/"+id].timer);flush("scenes/"+id)}});
+  try{document.execCommand("defaultParagraphSeparator",false,"div")}catch(e){}
+  const empty=()=>ed.classList.toggle("is-empty",!plain(s.texte).trim());
+  const count=()=>{wc.textContent=words(s.texte)+" mots"};count();empty();
+  ed.addEventListener("input",()=>{s.texte=editorToMd(ed);count();empty();save("scenes",s,1500);mention(ed)});
+  ed.addEventListener("paste",e=>{e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData("text/plain");document.execCommand("insertText",false,t)});
+  ed.addEventListener("keydown",e=>{const p=$("#mpop");if(!p.hidden&&(e.key==="Enter"||e.key==="Tab")){e.preventDefault();p.querySelector("button")?.click()}if(e.key==="Escape")p.hidden=true});
+  ed.addEventListener("blur",()=>{if(pend["scenes/"+id]){clearTimeout(pend["scenes/"+id].timer);flush("scenes/"+id)}});
+  $$(".fmtbar button").forEach(b=>b.addEventListener("mousedown",e=>e.preventDefault()));
   $("#edTitle").addEventListener("input",e=>{s.titre=e.target.value;save("scenes",s)});
   $("#edPick").addEventListener("change",e=>{st.edScene=e.target.value;st.confirm=null;ls.set("apo-view:"+PATH,{view:"scene",edScene:st.edScene});render()});
   $("#edChap").addEventListener("change",e=>{s.chap=+e.target.value;save("scenes",s,0);render()});
-  $("#edLieu").addEventListener("change",e=>{if(e.target.value==="__new"){const n=prompt2("Nom du lieu",nom=>{const l=save("lieux",{nom,description:""},0);s.lieu=l.id;save("scenes",s,0);render()});e.target.value=s.lieu||"";return}s.lieu=e.target.value;save("scenes",s,0)});
+  $("#edLieu").addEventListener("change",e=>{if(e.target.value==="__new"){prompt2("Nom du lieu",nom=>{const l=save("lieux",{nom,description:"",parent:""},0);s.lieu=l.id;save("scenes",s,0);render()});e.target.value=s.lieu||"";return}s.lieu=e.target.value;save("scenes",s,0)});
   $("#edFin").addEventListener("change",e=>{s.fin=e.target.checked?"Fin":"";save("scenes",s,0);render()});
   const ft=$("#edFinT");ft&&ft.addEventListener("input",()=>{s.fin=ft.value||"Fin";save("scenes",s)});
 };
 function prompt2(label,cb){openDrawer(label,`<form id="p2" class="grid" style="gap:12px"><div class="field"><label for="p2i">${esc(label)}</label><input id="p2i" required></div><button class="btn primary">Créer</button></form>`);setTimeout(()=>$("#p2i").focus(),200);$("#p2").onsubmit=e=>{e.preventDefault();const v=$("#p2i").value.trim();closeDrawer();if(v)cb(v)}}
-function mention(ta){
-  const p=$("#mpop"),before=ta.value.slice(0,ta.selectionStart),m=before.match(/@([\wÀ-ÿ'-]*)$/);
-  if(!m){p.hidden=true;return}
+let MENTION=null;
+function mention(ed){
+  const p=$("#mpop"),sel=window.getSelection();
+  if(!sel.rangeCount){p.hidden=true;return}
+  const r=sel.getRangeAt(0),node=r.startContainer;
+  if(node.nodeType!==3){p.hidden=true;return}
+  const before=node.nodeValue.slice(0,r.startOffset),m=before.match(/@([\wÀ-ÿ'-]*)$/);
+  if(!m){p.hidden=true;MENTION=null;return}
+  MENTION={node,start:r.startOffset-m[0].length,end:r.startOffset};
   const q=m[1].toLowerCase();
   const items=[...chars().map(c=>({l:c.nom,id:c.id})),...list("lieux").map(l=>({l:l.nom,lieu:l.id}))].filter(x=>x.l.toLowerCase().includes(q)).slice(0,6);
   if(!items.length){p.hidden=true;return}
-  p.innerHTML=items.map((x,i)=>`<button class="${i?"":"on"}" data-mention="${esc(x.l)}" data-mid="${x.id||""}" data-mlieu="${x.lieu||""}">${x.id?av(x.id,"sm"):'<span class="chip ink" style="padding:2px 6px">lieu</span>'}${esc(x.l)}</button>`).join("");
-  const lines=before.split("\n").length;
-  p.style.left="clamp(16px,6vw,56px)";p.style.top=Math.min(ta.offsetTop+ta.clientHeight-20,ta.offsetTop+20+lines*28)+"px";p.hidden=false;
+  p.innerHTML=items.map((x,i)=>`<button class="${i?"":"on"}" data-mention="${esc(x.l)}" data-mid="${x.id||""}" data-mlieu="${x.lieu||""}">${x.id?av(x.id,"sm"):'<span class="chip ink" style="padding:2px 6px">lieu</span>'}${esc(x.id?x.l:lieuNom(x.lieu))}</button>`).join("");
+  const rect=r.getBoundingClientRect(),box=p.parentElement.getBoundingClientRect();
+  p.style.left=Math.max(8,Math.min(rect.left-box.left,box.width-220))+"px";p.style.top=(rect.bottom-box.top+6)+"px";p.hidden=false;
 }
 async function showHistory(id){
   openDrawer("Versions de la scène",'<p class="note">Chargement…</p>');
@@ -650,7 +768,7 @@ R_.lecture=()=>{
   return `<div class="toolbar"><span class="note">Joue l'histoire comme un lecteur pour vérifier une branche.</span><span class="spacer"></span><label class="note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="lk" ${st.showLocked?"checked":""} style="accent-color:var(--accent)">Montrer les choix verrouillés</label>${r.path.length>1?'<button class="btn sm" data-act="back">← Retour</button>':""}<button class="btn sm" data-act="restart">Recommencer</button></div>
   <div class="rd"><div class="panel story">
       <div class="chap">Chapitre ${s.chap||1}</div><h2>${esc(s.titre)}</h2>
-      <div class="prose">${(s.texte||"").split("\n").filter(p=>p.trim()).map(p=>`<p>${esc(p)}</p>`).join("")||'<p class="muted">(Scène encore vide.)</p>'}</div>
+      <div class="prose">${mdToProse(s.texte)||'<p class="muted">(Scène encore vide.)</p>'}</div>
       ${s.fin?`<div class="ending"><div class="lbl" style="color:var(--good)">Fin atteinte</div><h3>${esc(s.fin)}</h3><p class="note" style="margin:6px 0 12px">Chemin parcouru en ${r.path.length} scènes.</p><button class="btn primary" data-act="restart">Rejouer une autre branche</button></div>`:
       opts.length?`<div class="opts">${shown.map(c=>{const ok=okCond(c.cond,r.vars);return `<button class="opt ${ok?"":"locked"}" ${ok?`data-pick="${c.id}"`:`disabled`}>${ok?"":"🔒 "}${esc(c.texte)}${ok?'<span class="arrow">→</span>':`<span class="cond" style="margin-left:auto">${esc(condTxt(c.cond))}</span>`}</button>`}).join("")}${!shown.some(c=>okCond(c.cond,r.vars))?'<div class="impasse"><b>Bloqué</b><p class="note" style="margin:4px 0 0">Aucun choix n\'est accessible avec ces jauges. Le lecteur serait coincé ici.</p></div>':""}</div>`:
       `<div class="impasse"><b>Impasse</b><p class="note" style="margin:4px 0 10px">Cette scène n'a pas encore de choix sortant.</p><button class="btn sm" data-scene="${r.scene}">Écrire la suite</button></div>`}
@@ -689,7 +807,7 @@ function results(q){
   const snip=t=>{t=String(t||"");const i=t.toLowerCase().indexOf(q);if(i<0)return esc(t.slice(0,110));const a=Math.max(0,i-50);return(a?"…":"")+esc(t.slice(a,i))+"<mark>"+esc(t.slice(i,i+q.length))+"</mark>"+esc(t.slice(i+q.length,i+80))+"…"};
   const groups=[
     ["Personnages",chars().filter(c=>hit(Object.values(c).join(" "))).map(c=>`<div class="row">${av(c.id,"sm")}<div class="grow"><b>${esc(c.nom)}</b><small>${esc(c.role||"")}</small></div><button class="btn sm" data-char-go="${c.id}">Fiche</button></div>`)],
-    ["Scènes",scenesSorted().filter(s=>hit(s.titre+" "+s.texte)).map(s=>`<div class="row"><div class="grow"><b>${esc(s.titre)}</b><small>${snip(hit(s.texte)?s.texte:s.titre)}</small></div><button class="btn sm" data-scene="${s.id}">Ouvrir</button></div>`)],
+    ["Scènes",scenesSorted().filter(s=>hit(s.titre+" "+plain(s.texte))).map(s=>`<div class="row"><div class="grow"><b>${esc(s.titre)}</b><small>${snip(hit(plain(s.texte))?plain(s.texte):s.titre)}</small></div><button class="btn sm" data-scene="${s.id}">Ouvrir</button></div>`)],
     ["Choix",list("choix").filter(c=>hit(c.texte)).map(c=>`<div class="row"><div class="grow"><b>${esc(c.texte)}</b><small>${esc(sceneT(c.de))} → ${esc(sceneT(c.vers))}</small></div><button class="btn sm" data-act="editChoice" data-id="${c.id}">Voir</button></div>`)],
     ["Événements",list("evenements").filter(e=>hit(e.titre+" "+e.description+" "+e.quand)).map(e=>`<div class="row"><div class="grow"><b>${esc(e.titre)}</b><small>${esc(e.quand||"")}</small></div><button class="btn sm" data-ev="${e.id}">Voir</button></div>`)],
     ["Lieux",list("lieux").filter(l=>hit(l.nom+" "+l.description)).map(l=>`<div class="row"><div class="grow"><b>${esc(l.nom)}</b><small>${esc(l.description||"")}</small></div><button class="btn sm" data-go="lieux">Voir</button></div>`)],
@@ -768,9 +886,9 @@ document.addEventListener("click",async e=>{
     if(d.to==="scene"){const s=save("scenes",{titre:i.texte.slice(0,48),chap:1,statut:"idee",persos:[],texte:i.texte},0);st.edScene=s.id;go("scene");toast("Scène créée à partir de l'idée.")}
     else if(d.to==="ev"){go("chronologie");evForm(null);$("#eT").value=i.texte.slice(0,60);$("#eD").value=i.texte}
     else render();return}
-  if(d.mention){const ta=$("#edText"),p=ta.selectionStart,b=ta.value.slice(0,p).replace(/@[\wÀ-ÿ'-]*$/,d.mention);ta.value=b+ta.value.slice(p);ta.focus();ta.selectionStart=ta.selectionEnd=b.length;$("#mpop").hidden=true;const s=get("scenes",st.edScene);s.texte=ta.value;
+  if(d.mention){const ed=$("#edText");if(MENTION&&MENTION.node.isConnected){const n=MENTION.node;n.nodeValue=n.nodeValue.slice(0,MENTION.start)+d.mention+n.nodeValue.slice(MENTION.end);const r=document.createRange();r.setStart(n,MENTION.start+d.mention.length);r.collapse(true);const sl=window.getSelection();sl.removeAllRanges();sl.addRange(r)}ed.focus();$("#mpop").hidden=true;MENTION=null;const s=get("scenes",st.edScene);s.texte=editorToMd(ed);
     if(d.mid&&!(s.persos||[]).includes(d.mid)){s.persos=[...(s.persos||[]),d.mid];toast(d.mention+" ajouté aux personnages de la scène.")}
-    if(d.mlieu&&!s.lieu){s.lieu=d.mlieu;toast("Lieu de la scène : "+d.mention)}
+    if(d.mlieu&&!s.lieu){s.lieu=d.mlieu;toast("Lieu de la scène : "+lieuNom(d.mlieu))}
     save("scenes",s);const side=$(".ed-side");if(side)side.innerHTML=edSide(s.id);return}
   if(!d.act)return;
   const A=d.act;
@@ -795,8 +913,17 @@ document.addEventListener("click",async e=>{
     case"relPickA":st.relChar=d.id;pickRelTarget();return;
     case"newEv":evForm(null);return;
     case"delEv":if(await remove("evenements",d.id)){closeDrawer();render()}return;
-    case"newLieu":prompt2("Nom du lieu",nom=>{save("lieux",{nom,description:""},0);render()});return;
-    case"delLieu":if(await remove("lieux",d.id)){list("scenes").forEach(s=>{if(s.lieu===d.id){s.lieu="";save("scenes",s)}});render()}return;
+    case"newLieu":prompt2("Nom du lieu",nom=>{save("lieux",{nom,description:"",parent:""},0);render()});return;
+    case"newSubLieu":{const par=d.id;prompt2("Sous-lieu dans « "+lieuNom(par)+" »",nom=>{save("lieux",{nom,description:"",parent:par},0);render()});return}
+    case"delLieu":{const l=get("lieux",d.id);const par=l?l.parent||"":"";if(await remove("lieux",d.id)){list("lieux").forEach(k=>{if(k.parent===d.id){k.parent=par;save("lieux",k)}});list("scenes").forEach(x=>{if(x.lieu===d.id){x.lieu=par;save("scenes",x)}});list("evenements").forEach(x=>{if(x.lieu===d.id){x.lieu=par;save("evenements",x)}});render();toast(par?"Lieu supprimé : ses sous-lieux et scènes passent dans « "+lieuNom(par)+" ».":"Lieu supprimé.")}return}
+    case"relCats":relCatsForm();return;
+    case"catCol":{const a=customRT();a[+d.i].couleur=d.col;DB.projet.typesRelation=a;saveProjet();relCatsForm();render();return}
+    case"catDel":{const a=customRT();const c=a[+d.i];if(list("relations").some(r=>Object.values(r.etats||{}).some(e=>e.type===c.id))){toast("Cette catégorie est utilisée : change d'abord les relations concernées.");return}a.splice(+d.i,1);DB.projet.typesRelation=a;saveProjet();relCatsForm();render();return}
+    case"charSort":st.charSort=d.v;ls.set("apo-charview",{sort:st.charSort});render();return;
+    case"charFCol":st.charFCol=st.charFCol===d.v?null:d.v;render();return;
+    case"charFTag":st.charFTag=st.charFTag===d.v?null:d.v;render();return;
+    case"charFClear":st.charFCol=null;st.charFTag=null;render();return;
+    case"fmt":fmt(d.cmd,d.v);return;
     case"newScene":newScene();return;
     case"setStart":DB.projet.depart=d.id;saveProjet();render();toast("Cette scène est maintenant le début.");return;
     case"relayout":list("scenes").forEach(s=>{if(typeof s.x==="number"){delete s.x;delete s.y;save("scenes",s,1500)}});render();return;

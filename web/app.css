@@ -376,3 +376,19 @@ textarea.inline-in{resize:vertical;min-height:2.6em;font-family:inherit;line-hei
 .save-dot.m{display:none}
 @media (max-width:900px){.save-dot.m{display:flex;position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(74px + env(safe-area-inset-bottom,0px));z-index:29;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:4px 10px;box-shadow:var(--shadow)}.save-dot.m.ok{display:none}}
 body.focus .save-dot.m{display:none}
+
+/* --- mise en forme du texte des scènes --- */
+.fmtbar{display:flex;flex-wrap:wrap;align-items:center;gap:2px;position:sticky;top:0;z-index:3;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;margin:0 0 12px;max-width:68ch;width:max-content}
+.fmtbar button{min-width:34px;height:32px;border:0;background:none;border-radius:7px;font-size:15px;color:var(--fg);display:grid;place-items:center;padding:0 6px}
+.fmtbar button:hover{background:var(--surface-2)}
+.fmtbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.paper .rich{width:100%;min-height:52vh;font-family:var(--f-text);font-size:var(--text-size);line-height:1.75;max-width:68ch;outline:none;white-space:pre-wrap;overflow-wrap:break-word;position:relative}
+.paper .rich.is-empty::before{content:attr(data-ph);color:var(--muted);position:absolute;pointer-events:none}
+.paper .rich div{min-height:1.75em}
+.t-s{font-size:.85em}.t-l{font-size:1.25em}.t-xl{font-size:1.5em;line-height:1.3}
+.rich font[size="1"],.rich font[size="2"]{font-size:.85em}.rich font[size="4"]{font-size:1.25em}.rich font[size="5"],.rich font[size="6"],.rich font[size="7"]{font-size:1.5em}
+/* --- sous-lieux --- */
+.sublieux{display:grid;gap:10px;margin-top:12px;padding-left:12px;border-left:2px solid var(--line)}
+.sublieu{display:grid;gap:6px;padding:10px 12px;background:var(--surface-2);border-radius:10px}
+.lieuxg{grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr))}
+.lieuxg{align-items:start}.lieuxg .chips{align-items:center}
